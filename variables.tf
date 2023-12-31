@@ -12,17 +12,26 @@ variable "instance_type" {
 
 variable "vpc_cidr" {
   description = "CIDR block for the VPC."
+  type = string
   default     = "10.0.0.0/20"
 }
 
-variable "subnet1_cidr" {
-  description = "CIDR block for Subnet 1."
-  default     = "10.0.1.0/24"
+variable "subnet_count" {
+  description = "Number of subnets to create."
+  type = number
+  default     = 2
 }
 
-variable "subnet2_cidr" {
-  description = "CIDR block for Subnet 2."
-  default     = "10.0.2.0/24"
+variable "instance_count" {
+  description = "Number of instances to create."
+  type = number
+  default     = 2
+}
+
+variable "availability_zone" {
+  description = "Availability zone for the subnets."
+  type = string
+  default     = "us-west-2a"
 }
 
 variable "key_pair" {
@@ -30,4 +39,20 @@ variable "key_pair" {
   type = string
   default     = "terraform_key" 
 }
+
+variable "ingress_port_80_instances" {
+  description = "List of instance indices to open port 80."
+  type = list(number)
+  default     = [0]
+  
+}
+
+variable "ingress_port_8080_instances" {
+  description = "List of instance indices to open port 8080."
+  type = list(number)
+  default     = [1]
+  
+}
+
+
 

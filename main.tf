@@ -26,6 +26,8 @@ terraform {
 
 resource "aws_vpc" "main" {
   cidr_block = var.vpc_cidr
+  enable_dns_support = true
+  enable_dns_hostnames = true
 
   tags = {
     Name = "mainVPC"
@@ -33,24 +35,15 @@ resource "aws_vpc" "main" {
 }
 
 
-resource "aws_subnet" "subnet1" {
+resource "aws_subnet" "subnet" {
+  count = var.subnet_count
   vpc_id            = aws_vpc.main.id
-  cidr_block        = var.subnet1_cidr
-  availability_zone = "${var.region}a"
+  cidr_block        = cidrsubnet(var.vpc_cidr, 4, count.index)
+  availability_zone = var.availability_zone
   
   tags = {
-    Name = "Subnet1"
-  }
-}
-
-
-resource "aws_subnet" "subnet2" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = var.subnet2_cidr
-  availability_zone = "${var.region}b"
-
-  tags = {
-    Name = "Subnet2"
+    Name = "Subnet-${count.index}"
+    count = "{count.index}"
   }
 }
 
@@ -82,83 +75,61 @@ data "aws_ami" "amazon_linux" {
 }
 
 
-resource "aws_instance" "instance1" {
+resource "aws_instance" "instance" {
+  count = var.instance_count
   ami           = data.aws_ami.amazon_linux.id
   instance_type = var.instance_type
-  subnet_id     = aws_subnet.subnet1.id
-  security_groups = [aws_security_group.sg1.id]
+  #subnet_id     = aws_subnet.subnet[count.index].id
+  subnet_id     = aws_subnet.subnet[count.index % var.subnet_count].id
+  security_groups = [aws_security_group.allow_http.id]
   key_name = var.key_pair
   associate_public_ip_address = true
   
   tags = {
-    Name = "Instance1_tf"
+    Name = "Instance-${count.index}"
+    count = "${count.index}"
   }
 }
 
 
-resource "aws_instance" "instance2" {
-  ami           = data.aws_ami.amazon_linux.id
-  instance_type = var.instance_type
-  subnet_id     = aws_subnet.subnet2.id
-  security_groups = [aws_security_group.sg2.id]
-  key_name = var.key_pair
-  associate_public_ip_address = true
 
-  tags = {
-    Name = "Instance2_tf"
-  }
-
-}
-
-
-resource "aws_security_group" "sg1" {
-  name        = "SG1"
-  description = "Security group for Instance 1"
+resource "aws_security_group" "allow_http" {
+  name        = "allow_http"
+  description = "Allow HTTP inbound traffic"
   vpc_id      = aws_vpc.main.id
 
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+  dynamic "ingress" {
+    for_each = range(var.instance_count)
+
+    content {
+      from_port = contains(var.ingress_port_80_instances, ingress.key) ? 80 : 8080
+      to_port   = contains(var.ingress_port_80_instances, ingress.key) ? 80 : 8080
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+   
   }
   
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1" 
-    cidr_blocks = ["0.0.0.0/0"] 
-  }
-
- tags = {
-   Name = "SG1"
- }
 }
 
-
-resource "aws_security_group" "sg2" {
-  name        = "SG2"
-  description = "Security group for Instance 2"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    from_port   = 8080
-    to_port     = 8080
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1" 
-    cidr_blocks = ["0.0.0.0/0"] 
+resource "aws_dynamodb_table" "tf_lock" {
+  name = "terraform_lock"
+  hash_key = "LockID"
+  read_capacity = 3
+  write_capacity = 3
+  attribute {
+    name = "LockID"
+    type = "S"
   }
 
   tags = {
-    Name = "SG2"
+    Name = "terraform_lock_table"
   }
 
+  lifecycle {
+    prevent_destroy = false
+  }
 }
+
 
 
