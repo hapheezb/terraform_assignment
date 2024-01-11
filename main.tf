@@ -36,14 +36,18 @@ resource "aws_vpc" "main" {
 
 
 resource "aws_subnet" "subnet" {
-  count = var.subnet_count
+  for_each = {
+    for idx in range(var.subnet_count): idx => {
+      cidr_block = "10.0.${idx}.0/24"
+    }
+  }
   vpc_id            = aws_vpc.main.id
-  cidr_block        = cidrsubnet(var.vpc_cidr, 4, count.index)
+  cidr_block        = each.value.cidr_block
   availability_zone = var.availability_zone
+  #map_public_ip_on_launch = true
   
   tags = {
-    Name = "Subnet-${count.index}"
-    count = "{count.index}"
+    Name = "subnet-${each.key}"
   }
 }
 
@@ -76,18 +80,17 @@ data "aws_ami" "amazon_linux" {
 
 
 resource "aws_instance" "instance" {
-  count = var.instance_count
+  for_each = aws_subnet.subnet
   ami           = data.aws_ami.amazon_linux.id
   instance_type = var.instance_type
-  #subnet_id     = aws_subnet.subnet[count.index].id
-  subnet_id     = aws_subnet.subnet[count.index % var.subnet_count].id
+  subnet_id     = each.value.id
   security_groups = [aws_security_group.allow_http.id]
   key_name = var.key_pair
   associate_public_ip_address = true
   
   tags = {
-    Name = "Instance-${count.index}"
-    count = "${count.index}"
+    Name = "instance-${each.key}"
+    subnet = each.key
   }
 }
 
@@ -99,11 +102,15 @@ resource "aws_security_group" "allow_http" {
   vpc_id      = aws_vpc.main.id
 
   dynamic "ingress" {
-    for_each = range(var.instance_count)
+    for_each = {
+      for idx in range(2): idx => {
+        port = idx == 0 ? 80 : 8080
+      }
+    }
 
     content {
-      from_port = contains(var.ingress_port_80_instances, ingress.key) ? 80 : 8080
-      to_port   = contains(var.ingress_port_80_instances, ingress.key) ? 80 : 8080
+      from_port = ingress.value.port
+      to_port   = ingress.value.port
       protocol    = "tcp"
       cidr_blocks = ["0.0.0.0/0"]
     }
